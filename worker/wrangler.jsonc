@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "areum",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/admin", "/admin/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "areum-db",
+      "database_id": "4c8475b5-8688-4d79-a4b4-fb4f3d2c30b5",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "areumwellness.com", "custom_domain": true },
+    { "pattern": "www.areumwellness.com", "custom_domain": true }
+  ],
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+  "vars": {
+    "TIMEZONE": "Europe/London"
+  },
+  "observability": { "enabled": true }
+}

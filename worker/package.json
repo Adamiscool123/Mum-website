@@ -1,0 +1,17 @@
+{
+  "name": "areum-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply areum-db --local",
+    "migrate:remote": "wrangler d1 migrations apply areum-db --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.119.0"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  }
+}

@@ -1,0 +1,10 @@
+﻿UPDATE membership_tiers SET stripe_price_id = 'price_1U1ZgZJTJ1nCyOt824Iz7Veh' WHERE id = 'foundation';
+UPDATE membership_tiers SET stripe_price_id = 'price_1U1ZgaJTJ1nCyOt8dbeeFgCF' WHERE id = 'signature';
+UPDATE membership_tiers SET stripe_price_id = 'price_1U1ZgbJTJ1nCyOt87FadW7Zp' WHERE id = 'private';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgbJTJ1nCyOt85V7NyFRi' WHERE slug = 'lpg-face-8';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgcJTJ1nCyOt8OgLtwqxf' WHERE slug = 'lpg-face-10';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgdJTJ1nCyOt8HTbOXJHl' WHERE slug = 'lpg-body-6';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgdJTJ1nCyOt8poqSd9h8' WHERE slug = 'lpg-body-10';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgeJTJ1nCyOt8WVWapAQr' WHERE slug = 'lpg-combo-10';
+UPDATE packages SET stripe_price_id = 'price_1U1ZgfJTJ1nCyOt8WUpD17nu' WHERE slug = 'lpg-full-6';
+UPDATE packages SET stripe_price_id = 'price_1U1ZggJTJ1nCyOt8Kc46KrcX' WHERE slug = 'lpg-full-10';
