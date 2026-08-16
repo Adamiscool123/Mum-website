@@ -207,47 +207,85 @@
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   }
 
+  const DRUG_ITEMS = ['1000ml Saline', '500ml Saline', '250ml Saline', 'Hydroxocobalamin B12', 'Magnesium', 'Glutathione', 'Vitamin C'];
+  const CONSUMABLE_GROUPS = [
+    ['Clinical consumables & equipment', ['Introcan Safety Cannula 20G', 'Introcan Safety Cannula 22G', 'IV Sets', 'Saline Flushes', 'Alcohol Sterile Wipes', 'Clinell Wipes', 'Sterile Gloves - Small', 'Sterile Gloves - Medium', 'Gauzes', 'Hand Sanitizer', 'IV Dressings', 'Tourniquets', 'Blood Pressure Monitor', 'Thermometer', 'Pulse Oximeter', 'Disposable Sheets for Chairs', 'Syringes 5ml', 'Syringes 10ml', 'Syringes 20ml', 'Blunt Filter Needles - Pink', 'Blue Needles']],
+    ['Emergency drugs', ['Adrenaline', 'Chlorphenamine', 'Salbutamol', 'Glucose Gels']],
+    ['Miscellaneous', ['White Slippers', 'Toilet Tissue', 'Teas', 'Fruit']]
+  ];
+  const OPENING_CHECKS = [['emergency_drugs', 'Emergency drugs & equipment'], ['clinic_clean', 'Clinic clean'], ['fire_extinguisher', 'Fire extinguisher'], ['clinical_equipment', 'Clinical equipment']];
+  const OPENING_TEMPS = [['room_temp', 'Room temp (°C)'], ['fridge_lowest', 'Fridge lowest (°C)'], ['fridge_highest', 'Fridge highest (°C)'], ['fridge_current', 'Fridge current / calibrated (°C)']];
+  const CK_TITLE = { opening: 'Opening Checklist', drugs: 'Drug Stock', consumables: 'Consumables Stock & Order' };
+  const CK_CHIP = { opening: 'Opening', drugs: 'Drugs', consumables: 'Stock' };
+  const ckId = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  let checkFilter = '';
+  document.querySelectorAll('#check-filter button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#check-filter button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      checkFilter = b.dataset.f;
+      loadLogs();
+    });
+  });
+
   async function loadLogs() {
-    const data = await api('/admin/api/logs');
+    const [logsRes, ckRes] = await Promise.all([api('/admin/api/logs'), api('/admin/api/checklists')]);
+    const entries = [];
+    logsRes.logs.forEach(l => entries.push({ t: 'log', when: l.created_at, obj: l }));
+    ckRes.checklists.forEach(k => entries.push({ t: k.kind, when: k.created_at, obj: k }));
+    entries.sort((a, b) => (a.when < b.when ? 1 : -1));
+    const visible = entries.filter(e => !checkFilter || (checkFilter === 'log' ? e.t === 'log' : e.t === checkFilter));
     const el = $('log-list');
-    if (!data.logs.length) { el.innerHTML = '<p class="empty">No logs yet — tap “New daily log” when you arrive.</p>'; return; }
+    if (!visible.length) { el.innerHTML = '<p class="empty">Nothing here yet</p>'; return; }
     const niceDate = d => new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' });
-    el.innerHTML = data.logs.map(l => {
-      const bits = ['In ' + (l.check_in || '—') + (l.check_out ? ' · Out ' + l.check_out : '')];
-      if (l.freezer_temp) bits.push('Freezer ' + esc(l.freezer_temp));
-      if (l.room_temp) bits.push('Room ' + esc(l.room_temp));
-      if (l.emergency_drugs) bits.push('Drugs ' + LOG_FLAG[l.emergency_drugs]);
-      if (l.cleanliness) bits.push('Clean ' + LOG_FLAG[l.cleanliness]);
-      if (l.touch_count) bits.push('Touch ' + esc(l.touch_count));
-      return '<div class="form-row" data-id="' + l.id + '">' +
-        '<div><div class="fr-name">' + esc(l.staff_name) + ' <span class="muted" style="font-weight:400">· ' + niceDate(l.log_date) + '</span></div>' +
-        '<div class="fr-meta">' + bits.join(' · ') + '</div></div>' +
-        (!l.check_out ? '<span class="form-kind">On shift</span>' : '') +
-        '</div>';
+    el.innerHTML = visible.map((e, i) => {
+      if (e.t === 'log') {
+        const l = e.obj;
+        const bits = ['In ' + (l.check_in || '—') + (l.check_out ? ' · Out ' + l.check_out : '')];
+        if (l.touch_count) bits.push('Touch ' + esc(l.touch_count));
+        return '<div class="form-row" data-i="' + i + '">' +
+          '<div><div class="fr-name">' + esc(l.staff_name) + ' <span class="muted" style="font-weight:400">· ' + niceDate(l.log_date) + '</span></div>' +
+          '<div class="fr-meta">' + bits.join(' · ') + '</div></div>' +
+          '<span class="form-kind">' + (!l.check_out ? 'On shift' : 'Log') + '</span></div>';
+      }
+      const k = e.obj, d = k.data || {};
+      const meta = [];
+      if (e.t === 'opening') {
+        if (d.room_temp) meta.push('Room ' + esc(d.room_temp) + '°');
+        if (d.fridge_current) meta.push('Fridge ' + esc(d.fridge_current) + '°');
+        const issues = OPENING_CHECKS.filter(c2 => d[c2[0]] === 'issue').length;
+        meta.push(issues ? issues + ' need attention' : 'All OK');
+      } else if (e.t === 'drugs') {
+        meta.push(Object.keys(d.counts || {}).length + ' items counted');
+      } else {
+        const items = d.items || {};
+        const toOrder = Object.keys(items).filter(x => items[x].order).length;
+        meta.push(Object.keys(items).length + ' counted' + (toOrder ? ' · ' + toOrder + ' to order' : ''));
+      }
+      if (d.initials) meta.push('Initials ' + esc(d.initials));
+      return '<div class="form-row" data-i="' + i + '">' +
+        '<div><div class="fr-name">' + CK_TITLE[e.t] + ' <span class="muted" style="font-weight:400">· ' + niceDate(k.log_date) + '</span></div>' +
+        '<div class="fr-meta">' + meta.join(' · ') + '</div></div>' +
+        '<span class="form-kind">' + CK_CHIP[e.t] + '</span></div>';
     }).join('');
-    el.querySelectorAll('.form-row').forEach(r =>
-      r.addEventListener('click', () => openLogSheet(data.logs.find(x => String(x.id) === r.dataset.id))));
+    el.querySelectorAll('.form-row').forEach(r => r.addEventListener('click', () => {
+      const e = visible[Number(r.dataset.i)];
+      if (e.t === 'log') openLogSheet(e.obj); else openChecklistSheet(e.obj);
+    }));
   }
 
+  /* Daily log is slim by design — the clinic checks live in the Opening Checklist */
   $('log-new').addEventListener('click', () => {
     openSheet(
-      '<h3>New daily log</h3><p class="sub">' +
+      '<h3>Daily log</h3><p class="sub">' +
       new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' }) + '</p>' +
       '<label for="lg-name">Your name</label><input id="lg-name">' +
       '<div class="pick" style="grid-template-columns:1fr 1fr">' +
       '<span><label for="lg-in">Check-in time</label><input type="time" id="lg-in" value="' + nowLondon() + '"></span>' +
       '<span><label for="lg-out">Check-out (leave empty)</label><input type="time" id="lg-out"></span></div>' +
-      '<div class="pick" style="grid-template-columns:1fr 1fr">' +
-      '<span><label for="lg-freezer">Freezer temp (&deg;C)</label><input id="lg-freezer" inputmode="numeric"></span>' +
-      '<span><label for="lg-room">Room temp (&deg;C)</label><input id="lg-room" inputmode="numeric"></span></div>' +
       '<label for="lg-touch">Touch count</label><input id="lg-touch" inputmode="numeric">' +
-      '<label for="lg-drugs">Emergency drug check</label>' +
-      '<select id="lg-drugs"><option value="">&mdash;</option><option value="ok">OK</option><option value="issue">Needs attention</option></select>' +
-      '<label for="lg-drugs-notes">Emergency drug notes (optional)</label><input id="lg-drugs-notes">' +
-      '<label for="lg-clean">Clinic cleanliness check</label>' +
-      '<select id="lg-clean"><option value="">&mdash;</option><option value="ok">OK</option><option value="issue">Needs attention</option></select>' +
-      '<label for="lg-clean-notes">Cleanliness notes (optional)</label><input id="lg-clean-notes">' +
-      '<label for="lg-notes">Other notes (optional)</label><input id="lg-notes">' +
+      '<label for="lg-notes">Notes (optional)</label><input id="lg-notes">' +
       '<div class="btnrow"><button class="b primary" id="lg-save">Save log</button></div>'
     );
     $('lg-save').addEventListener('click', async () => {
@@ -258,15 +296,135 @@
         body: JSON.stringify({
           log_date: todayLondon(), staff_name: name,
           check_in: $('lg-in').value, check_out: $('lg-out').value,
-          touch_count: $('lg-touch').value, freezer_temp: $('lg-freezer').value,
-          emergency_drugs: $('lg-drugs').value, emergency_drugs_notes: $('lg-drugs-notes').value,
-          cleanliness: $('lg-clean').value, cleanliness_notes: $('lg-clean-notes').value,
-          room_temp: $('lg-room').value, notes: $('lg-notes').value
+          touch_count: $('lg-touch').value, notes: $('lg-notes').value
         })
       });
       if (out && out.ok) { closeSheet(); loadLogs(); toast('Log saved'); }
     });
   });
+
+  /* ---------- checklist sheets (from the clinic's Excel sheets) ---------- */
+  async function saveChecklist(kind, data) {
+    const out = await api('/admin/api/checklists', {
+      method: 'POST',
+      body: JSON.stringify({ kind: kind, log_date: todayLondon(), data: data })
+    });
+    if (out && out.ok) { closeSheet(); loadLogs(); toast('Saved'); }
+  }
+
+  $('ck-opening').addEventListener('click', () => {
+    openSheet(
+      '<h3>Opening Checklist</h3><p class="sub">Daily morning opening checklist</p>' +
+      '<div class="pick" style="grid-template-columns:1fr 1fr">' +
+      '<span><label for="op-time">Time</label><input type="time" id="op-time" value="' + nowLondon() + '"></span>' +
+      '<span><label for="op-initials">Initials</label><input id="op-initials"></span></div>' +
+      '<div class="pick" style="grid-template-columns:1fr 1fr">' +
+      OPENING_TEMPS.map(t =>
+        '<span><label for="op-' + t[0] + '">' + t[1] + '</label><input id="op-' + t[0] + '" inputmode="numeric"></span>'
+      ).join('') + '</div>' +
+      OPENING_CHECKS.map(c2 =>
+        '<label for="op-' + c2[0] + '">' + c2[1] + '</label>' +
+        '<select id="op-' + c2[0] + '"><option value="">&mdash;</option><option value="ok">OK</option><option value="issue">Needs attention</option></select>'
+      ).join('') +
+      '<label for="op-notes">Notes / additional information</label><input id="op-notes">' +
+      '<div class="btnrow"><button class="b primary" id="op-save">Save checklist</button></div>'
+    );
+    $('op-save').addEventListener('click', async () => {
+      const initials = $('op-initials').value.trim();
+      if (!initials) { toast('Please add your initials'); return; }
+      const data = { time: $('op-time').value, initials: initials, notes: $('op-notes').value.trim() };
+      OPENING_TEMPS.forEach(t => { data[t[0]] = $('op-' + t[0]).value.trim(); });
+      OPENING_CHECKS.forEach(c2 => { data[c2[0]] = $('op-' + c2[0]).value; });
+      await saveChecklist('opening', data);
+    });
+  });
+
+  $('ck-drugs').addEventListener('click', () => {
+    openSheet(
+      '<h3>Drug Stock</h3><p class="sub">Count each item</p>' +
+      DRUG_ITEMS.map(it =>
+        '<div class="ckrow"><span>' + it + '</span><input id="dg-' + ckId(it) + '" inputmode="numeric" placeholder="Qty"><span></span></div>'
+      ).join('') +
+      '<label for="dg-initials" style="margin-top:0.6rem">Nurse initials</label><input id="dg-initials">' +
+      '<label for="dg-notes">Notes (optional)</label><input id="dg-notes">' +
+      '<div class="btnrow"><button class="b primary" id="dg-save">Save drug stock</button></div>'
+    );
+    $('dg-save').addEventListener('click', async () => {
+      const initials = $('dg-initials').value.trim();
+      if (!initials) { toast('Please add your initials'); return; }
+      const counts = {};
+      DRUG_ITEMS.forEach(it => {
+        const v = $('dg-' + ckId(it)).value.trim();
+        if (v) counts[it] = v;
+      });
+      if (!Object.keys(counts).length) { toast('Count at least one item'); return; }
+      await saveChecklist('drugs', { counts: counts, initials: initials, notes: $('dg-notes').value.trim() });
+    });
+  });
+
+  $('ck-consumables').addEventListener('click', () => {
+    openSheet(
+      '<h3>Consumables Stock &amp; Order</h3><p class="sub">Fill in only what you counted</p>' +
+      '<div class="ckhead"><span></span><span>Stock</span><span>Order</span></div>' +
+      CONSUMABLE_GROUPS.map(g =>
+        '<div class="ckgroup">' + g[0] + '</div>' +
+        g[1].map(it =>
+          '<div class="ckrow"><span>' + it + '</span>' +
+          '<input id="cs-' + ckId(it) + '" inputmode="numeric">' +
+          '<input id="co-' + ckId(it) + '" inputmode="numeric"></div>'
+        ).join('')
+      ).join('') +
+      '<label for="cn-notes" style="margin-top:0.6rem">Notes (optional)</label><input id="cn-notes">' +
+      '<div class="btnrow"><button class="b primary" id="cn-save">Save stock list</button></div>'
+    );
+    $('cn-save').addEventListener('click', async () => {
+      const items = {};
+      CONSUMABLE_GROUPS.forEach(g => g[1].forEach(it => {
+        const stock = $('cs-' + ckId(it)).value.trim();
+        const order = $('co-' + ckId(it)).value.trim();
+        if (stock || order) items[it] = { stock: stock, order: order };
+      }));
+      if (!Object.keys(items).length) { toast('Fill in at least one item'); return; }
+      await saveChecklist('consumables', { items: items, notes: $('cn-notes').value.trim() });
+    });
+  });
+
+  function openChecklistSheet(k) {
+    const d = k.data || {};
+    const row = (lbl, v) => v ? '<p><b>' + lbl + '</b>' + esc(String(v)) + '</p>' : '';
+    let body = '';
+    if (k.kind === 'opening') {
+      body = '<div class="fdet-grid">' + row('Time', d.time) +
+        OPENING_TEMPS.map(t => row(t[1], d[t[0]])).join('') +
+        OPENING_CHECKS.map(c2 => row(c2[1], d[c2[0]] && LOG_FLAG[d[c2[0]]])).join('') +
+        row('Initials', d.initials) + row('Notes', d.notes) + row('Logged by', k.submitted_by) + '</div>';
+    } else if (k.kind === 'drugs') {
+      body = '<div class="fdet-grid">' +
+        DRUG_ITEMS.map(it => row(it, (d.counts || {})[it])).join('') +
+        row('Nurse initials', d.initials) + row('Notes', d.notes) + row('Logged by', k.submitted_by) + '</div>';
+    } else {
+      const items = d.items || {};
+      body = '<div class="ckhead"><span></span><span>Stock</span><span>Order</span></div>' +
+        Object.keys(items).map(nm =>
+          '<div class="ckrow"><span>' + esc(nm) + '</span><span>' + esc(items[nm].stock || '—') + '</span><span>' + esc(items[nm].order || '—') + '</span></div>'
+        ).join('') +
+        '<div class="fdet-grid" style="margin-top:0.8rem">' + row('Notes', d.notes) + row('Logged by', k.submitted_by) + '</div>';
+    }
+    openSheet(
+      '<h3>' + CK_TITLE[k.kind] + '</h3><p class="sub">' + k.log_date + '</p>' + body +
+      (myRole === 'owner' ? '<div class="btnrow" style="margin-top:1rem"><button class="b bad" id="ck-del">Delete</button></div>' : '')
+    );
+    const del = $('ck-del');
+    if (del) {
+      del.addEventListener('click', async () => {
+        if (!confirm('Delete this checklist entry?')) return;
+        await api('/admin/api/checklists/' + k.id, { method: 'DELETE' });
+        closeSheet();
+        loadLogs();
+        toast('Deleted');
+      });
+    }
+  }
 
   function openLogSheet(l) {
     if (!l) return;

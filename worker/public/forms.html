@@ -523,6 +523,7 @@
         body: JSON.stringify({ kind: kind, data: data, clientSignature: sigClient, practitionerSignature: sigPrac })
       });
       const out = await res.json();
+      if (res.status === 401) { toast('Session expired — reload this page to sign in again'); return false; }
       if (!res.ok) { toast(out.error || 'Could not save — please try again'); return false; }
       return true;
     } catch (e) {

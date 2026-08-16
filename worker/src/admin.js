@@ -87,6 +87,38 @@ export function registerAdmin(app) {
     return c.json({ ok: true });
   });
 
+  /* ---------- staff checklists: opening / drug stock / consumables (both roles) ---------- */
+  app.get('/admin/api/checklists', async c => {
+    const kind = c.req.query('kind') || '';
+    let sql = 'SELECT * FROM checklists';
+    const bind = [];
+    if (['opening', 'drugs', 'consumables'].includes(kind)) { sql += ' WHERE kind = ?'; bind.push(kind); }
+    sql += ' ORDER BY created_at DESC LIMIT 60';
+    const rows = (await c.env.DB.prepare(sql).bind(...bind).all()).results;
+    rows.forEach(r => { try { r.data = JSON.parse(r.data); } catch { r.data = {}; } });
+    return c.json({ checklists: rows });
+  });
+
+  app.post('/admin/api/checklists', async c => {
+    let b;
+    try { b = await c.req.json(); } catch { return c.json({ error: 'Bad JSON' }, 400); }
+    if (!['opening', 'drugs', 'consumables'].includes(b.kind)) return c.json({ error: 'Unknown checklist' }, 400);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.log_date || '')) return c.json({ error: 'Bad date' }, 400);
+    if (!b.data || typeof b.data !== 'object') return c.json({ error: 'Missing data' }, 400);
+    const json = JSON.stringify(b.data);
+    if (json.length > 20000) return c.json({ error: 'Checklist too large' }, 400);
+    const row = await c.env.DB.prepare(
+      'INSERT INTO checklists (kind, log_date, data, submitted_by) VALUES (?, ?, ?, ?) RETURNING id'
+    ).bind(b.kind, b.log_date, json, c.get('adminUser').username).first();
+    return c.json({ ok: true, id: row.id });
+  });
+
+  app.delete('/admin/api/checklists/:id', async c => {
+    if (c.get('adminUser').role !== 'owner') return c.json({ error: 'Owner only' }, 403);
+    await c.env.DB.prepare('DELETE FROM checklists WHERE id = ?').bind(c.req.param('id')).run();
+    return c.json({ ok: true });
+  });
+
   /* ---------- staff daily logs: check-in/out + clinic checks (both roles) ---------- */
   app.get('/admin/api/logs', async c => {
     const rows = (await c.env.DB.prepare(

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { stripeRequest, verifyWebhook, StripeError } from './stripe.js';
 import { localToUtcIso, utcIsoToLocalHHMM, localWeekday, todayLocal } from './time.js';
 import { registerAdmin } from './admin.js';
+import { sessionUser, readSessionCookie } from './auth.js';
 import { sendEmail, bookingConfirmationEmail, bookingReminderEmail, membershipWelcomeEmail, packageConfirmationEmail } from './email.js';
 
 const app = new Hono();
@@ -459,7 +460,22 @@ app.post('/api/stripe/webhook', async c => {
 
 const SIG_OK = s => typeof s === 'string' && s.startsWith('data:image/png;base64,') && s.length < 200000;
 
+/* The forms kiosk is clinic-only: page and API both require an admin session
+   (owner or staff account) so the public can't spam signed forms. */
+async function formsUser(c) {
+  return sessionUser(c.env.DB, readSessionCookie(c));
+}
+
+app.get('/forms', async c => {
+  const user = await formsUser(c);
+  const url = new URL(c.req.url);
+  url.pathname = user ? '/forms.html' : '/admin/login.html';
+  return c.env.ASSETS.fetch(new Request(url, { headers: c.req.raw.headers }));
+});
+app.get('/forms.html', c => c.redirect('/forms', 301));
+
 app.post('/api/forms', async c => {
+  if (!(await formsUser(c))) return c.json({ error: 'Not signed in' }, 401);
   let b;
   try { b = await c.req.json(); } catch { return c.json({ error: 'Bad JSON' }, 400); }
   const { kind, data, clientSignature, practitionerSignature } = b || {};

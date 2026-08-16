@@ -124,6 +124,14 @@
   .fdet-grid p b { display: block; font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8A7245; font-weight: 500; }
   .fdet-h { font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: #8A7245; margin: 0.9rem 0 0.3rem; font-weight: 500; }
   .fdet-line { font-size: 0.9rem; }
+  .checkbtns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 0.9rem; }
+  .checkbtns .b { padding: 0.85rem 0.5rem; text-align: center; }
+  .checkbtns .b small { display: block; font-size: 0.62rem; opacity: 0.75; letter-spacing: 0.02em; text-transform: none; margin-top: 3px; }
+  .ckhead, .ckrow { display: grid; grid-template-columns: 1fr 72px 72px; gap: 6px; align-items: center; }
+  .ckhead { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8A7245; margin: 0.7rem 0 0.3rem; }
+  .ckgroup { font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: #8A7245; font-weight: 500; margin: 1rem 0 0.35rem; }
+  .ckrow { font-size: 0.85rem; margin-bottom: 4px; }
+  .ckrow input { padding: 0.45em 0.5em; }
   #print-area { display: none; }
   @media print {
     body > *:not(#print-area) { display: none !important; }
@@ -245,10 +253,22 @@
     <section class="view" id="view-logs">
       <h2>Daily Checks</h2>
       <p class="muted" style="font-size:0.8rem; margin:0.3rem 0 0.9rem">
-        Check in when you arrive, fill in the clinic checks, and check out at the end of your shift.
+        Check in when you arrive, do the opening checklist, and check out at the end of your shift.
       </p>
-      <div class="btnrow" style="margin-bottom:1rem"><button class="b primary" id="log-new">New daily log</button></div>
-      <div id="log-list"></div>
+      <div class="checkbtns">
+        <button class="b primary" id="log-new">Daily Log<small>Check in / out</small></button>
+        <button class="b" id="ck-opening">Opening<small>Morning checklist</small></button>
+        <button class="b" id="ck-drugs">Drug Stock<small>Counts + initials</small></button>
+        <button class="b" id="ck-consumables">Consumables<small>Stock &amp; order</small></button>
+      </div>
+      <div class="form-filter" id="check-filter">
+        <button data-f="" class="active">All</button>
+        <button data-f="log">Logs</button>
+        <button data-f="opening">Opening</button>
+        <button data-f="drugs">Drugs</button>
+        <button data-f="consumables">Stock</button>
+      </div>
+      <div id="log-list" style="margin-top:0.9rem"></div>
     </section>
 
     <section class="view" id="view-clients">
