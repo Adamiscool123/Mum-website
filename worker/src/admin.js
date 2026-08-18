@@ -119,6 +119,18 @@ export function registerAdmin(app) {
     return c.json({ ok: true });
   });
 
+  app.patch('/admin/api/checklists/:id', async c => {
+    let b;
+    try { b = await c.req.json(); } catch { return c.json({ error: 'Bad JSON' }, 400); }
+    if (!b.data || typeof b.data !== 'object') return c.json({ error: 'Missing data' }, 400);
+    const json = JSON.stringify(b.data);
+    if (json.length > 20000) return c.json({ error: 'Checklist too large' }, 400);
+    const row = await c.env.DB.prepare('SELECT id FROM checklists WHERE id = ?').bind(c.req.param('id')).first();
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    await c.env.DB.prepare('UPDATE checklists SET data = ? WHERE id = ?').bind(json, row.id).run();
+    return c.json({ ok: true });
+  });
+
   /* ---------- staff daily logs: check-in/out + clinic checks (both roles) ---------- */
   app.get('/admin/api/logs', async c => {
     const rows = (await c.env.DB.prepare(
@@ -146,6 +158,21 @@ export function registerAdmin(app) {
       text(b.room_temp), text(b.notes), c.get('adminUser').username
     ).first();
     return c.json({ ok: true, id: row.id });
+  });
+
+  app.patch('/admin/api/logs/:id', async c => {
+    let b;
+    try { b = await c.req.json(); } catch { return c.json({ error: 'Bad JSON' }, 400); }
+    const row = await c.env.DB.prepare('SELECT id FROM staff_logs WHERE id = ?').bind(c.req.param('id')).first();
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    const name = String(b.staff_name || '').trim();
+    if (name.length < 2) return c.json({ error: 'Your name is required' }, 400);
+    const time = s => { s = String(s || '').trim(); return /^\d{2}:\d{2}$/.test(s) ? s : null; };
+    const text = s => String(s || '').trim().slice(0, 300) || null;
+    await c.env.DB.prepare(
+      'UPDATE staff_logs SET staff_name = ?, check_in = ?, check_out = ?, touch_count = ?, notes = ? WHERE id = ?'
+    ).bind(name, time(b.check_in), time(b.check_out), text(b.touch_count), text(b.notes), row.id).run();
+    return c.json({ ok: true });
   });
 
   app.post('/admin/api/logs/:id/checkout', async c => {

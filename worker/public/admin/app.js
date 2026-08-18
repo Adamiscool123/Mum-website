@@ -275,48 +275,57 @@
     }));
   }
 
-  /* Daily log is slim by design — the clinic checks live in the Opening Checklist */
-  $('log-new').addEventListener('click', () => {
+  /* Daily log is slim by design — the clinic checks live in the Opening Checklist.
+     All staff forms open in "new" or "edit" mode (pass the existing record). */
+  function openDailyLogForm(existing) {
+    const ex = existing || {};
     openSheet(
-      '<h3>Daily log</h3><p class="sub">' +
-      new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' }) + '</p>' +
+      '<h3>' + (existing ? 'Edit daily log' : 'Daily log') + '</h3><p class="sub">' +
+      (existing ? ex.log_date : new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' })) + '</p>' +
       '<label for="lg-name">Your name</label><input id="lg-name">' +
       '<div class="pick" style="grid-template-columns:1fr 1fr">' +
-      '<span><label for="lg-in">Check-in time</label><input type="time" id="lg-in" value="' + nowLondon() + '"></span>' +
+      '<span><label for="lg-in">Check-in time</label><input type="time" id="lg-in"></span>' +
       '<span><label for="lg-out">Check-out (leave empty)</label><input type="time" id="lg-out"></span></div>' +
       '<label for="lg-touch">Touch count</label><input id="lg-touch" inputmode="numeric">' +
       '<label for="lg-notes">Notes (optional)</label><input id="lg-notes">' +
-      '<div class="btnrow"><button class="b primary" id="lg-save">Save log</button></div>'
+      '<div class="btnrow"><button class="b primary" id="lg-save">' + (existing ? 'Save changes' : 'Save log') + '</button></div>'
     );
+    $('lg-name').value = ex.staff_name || '';
+    $('lg-in').value = ex.check_in || (existing ? '' : nowLondon());
+    $('lg-out').value = ex.check_out || '';
+    $('lg-touch').value = ex.touch_count || '';
+    $('lg-notes').value = ex.notes || '';
     $('lg-save').addEventListener('click', async () => {
       const name = $('lg-name').value.trim();
       if (name.length < 2) { toast('Please enter your name'); return; }
-      const out = await api('/admin/api/logs', {
-        method: 'POST',
-        body: JSON.stringify({
-          log_date: todayLondon(), staff_name: name,
-          check_in: $('lg-in').value, check_out: $('lg-out').value,
-          touch_count: $('lg-touch').value, notes: $('lg-notes').value
-        })
-      });
-      if (out && out.ok) { closeSheet(); loadLogs(); toast('Log saved'); }
+      const payload = {
+        log_date: existing ? ex.log_date : todayLondon(), staff_name: name,
+        check_in: $('lg-in').value, check_out: $('lg-out').value,
+        touch_count: $('lg-touch').value, notes: $('lg-notes').value
+      };
+      const out = existing
+        ? await api('/admin/api/logs/' + ex.id, { method: 'PATCH', body: JSON.stringify(payload) })
+        : await api('/admin/api/logs', { method: 'POST', body: JSON.stringify(payload) });
+      if (out && out.ok) { closeSheet(); loadLogs(); toast(existing ? 'Log updated' : 'Log saved'); }
     });
-  });
+  }
+  $('log-new').addEventListener('click', () => openDailyLogForm(null));
 
   /* ---------- checklist sheets (from the clinic's Excel sheets) ---------- */
-  async function saveChecklist(kind, data) {
-    const out = await api('/admin/api/checklists', {
-      method: 'POST',
-      body: JSON.stringify({ kind: kind, log_date: todayLondon(), data: data })
-    });
-    if (out && out.ok) { closeSheet(); loadLogs(); toast('Saved'); }
+  async function saveChecklist(kind, data, existing) {
+    const out = existing
+      ? await api('/admin/api/checklists/' + existing.id, { method: 'PATCH', body: JSON.stringify({ data: data }) })
+      : await api('/admin/api/checklists', { method: 'POST', body: JSON.stringify({ kind: kind, log_date: todayLondon(), data: data }) });
+    if (out && out.ok) { closeSheet(); loadLogs(); toast(existing ? 'Updated' : 'Saved'); }
   }
 
-  $('ck-opening').addEventListener('click', () => {
+  function openOpeningForm(existing) {
+    const d = existing ? (existing.data || {}) : null;
     openSheet(
-      '<h3>Opening Checklist</h3><p class="sub">Daily morning opening checklist</p>' +
+      '<h3>' + (existing ? 'Edit Opening Checklist' : 'Opening Checklist') + '</h3><p class="sub">' +
+      (existing ? existing.log_date : 'Daily morning opening checklist') + '</p>' +
       '<div class="pick" style="grid-template-columns:1fr 1fr">' +
-      '<span><label for="op-time">Time</label><input type="time" id="op-time" value="' + nowLondon() + '"></span>' +
+      '<span><label for="op-time">Time</label><input type="time" id="op-time"></span>' +
       '<span><label for="op-initials">Initials</label><input id="op-initials"></span></div>' +
       '<div class="pick" style="grid-template-columns:1fr 1fr">' +
       OPENING_TEMPS.map(t =>
@@ -327,28 +336,43 @@
         '<select id="op-' + c2[0] + '"><option value="">&mdash;</option><option value="ok">OK</option><option value="issue">Needs attention</option></select>'
       ).join('') +
       '<label for="op-notes">Notes / additional information</label><input id="op-notes">' +
-      '<div class="btnrow"><button class="b primary" id="op-save">Save checklist</button></div>'
+      '<div class="btnrow"><button class="b primary" id="op-save">' + (existing ? 'Save changes' : 'Save checklist') + '</button></div>'
     );
+    $('op-time').value = d ? (d.time || '') : nowLondon();
+    if (d) {
+      $('op-initials').value = d.initials || '';
+      $('op-notes').value = d.notes || '';
+      OPENING_TEMPS.forEach(t => { $('op-' + t[0]).value = d[t[0]] || ''; });
+      OPENING_CHECKS.forEach(c2 => { $('op-' + c2[0]).value = d[c2[0]] || ''; });
+    }
     $('op-save').addEventListener('click', async () => {
       const initials = $('op-initials').value.trim();
       if (!initials) { toast('Please add your initials'); return; }
       const data = { time: $('op-time').value, initials: initials, notes: $('op-notes').value.trim() };
       OPENING_TEMPS.forEach(t => { data[t[0]] = $('op-' + t[0]).value.trim(); });
       OPENING_CHECKS.forEach(c2 => { data[c2[0]] = $('op-' + c2[0]).value; });
-      await saveChecklist('opening', data);
+      await saveChecklist('opening', data, existing);
     });
-  });
+  }
+  $('ck-opening').addEventListener('click', () => openOpeningForm(null));
 
-  $('ck-drugs').addEventListener('click', () => {
+  function openDrugsForm(existing) {
+    const d = existing ? (existing.data || {}) : null;
     openSheet(
-      '<h3>Drug Stock</h3><p class="sub">Count each item</p>' +
+      '<h3>' + (existing ? 'Edit Drug Stock' : 'Drug Stock') + '</h3><p class="sub">' +
+      (existing ? existing.log_date : 'Count each item') + '</p>' +
       DRUG_ITEMS.map(it =>
         '<div class="ckrow"><span>' + it + '</span><input id="dg-' + ckId(it) + '" inputmode="numeric" placeholder="Qty"><span></span></div>'
       ).join('') +
       '<label for="dg-initials" style="margin-top:0.6rem">Nurse initials</label><input id="dg-initials">' +
       '<label for="dg-notes">Notes (optional)</label><input id="dg-notes">' +
-      '<div class="btnrow"><button class="b primary" id="dg-save">Save drug stock</button></div>'
+      '<div class="btnrow"><button class="b primary" id="dg-save">' + (existing ? 'Save changes' : 'Save drug stock') + '</button></div>'
     );
+    if (d) {
+      DRUG_ITEMS.forEach(it => { $('dg-' + ckId(it)).value = (d.counts || {})[it] || ''; });
+      $('dg-initials').value = d.initials || '';
+      $('dg-notes').value = d.notes || '';
+    }
     $('dg-save').addEventListener('click', async () => {
       const initials = $('dg-initials').value.trim();
       if (!initials) { toast('Please add your initials'); return; }
@@ -358,13 +382,16 @@
         if (v) counts[it] = v;
       });
       if (!Object.keys(counts).length) { toast('Count at least one item'); return; }
-      await saveChecklist('drugs', { counts: counts, initials: initials, notes: $('dg-notes').value.trim() });
+      await saveChecklist('drugs', { counts: counts, initials: initials, notes: $('dg-notes').value.trim() }, existing);
     });
-  });
+  }
+  $('ck-drugs').addEventListener('click', () => openDrugsForm(null));
 
-  $('ck-consumables').addEventListener('click', () => {
+  function openConsumablesForm(existing) {
+    const d = existing ? (existing.data || {}) : null;
     openSheet(
-      '<h3>Consumables Stock &amp; Order</h3><p class="sub">Fill in only what you counted</p>' +
+      '<h3>' + (existing ? 'Edit Consumables' : 'Consumables Stock &amp; Order') + '</h3><p class="sub">' +
+      (existing ? existing.log_date : 'Fill in only what you counted') + '</p>' +
       '<div class="ckhead"><span></span><span>Stock</span><span>Order</span></div>' +
       CONSUMABLE_GROUPS.map(g =>
         '<div class="ckgroup">' + g[0] + '</div>' +
@@ -375,8 +402,18 @@
         ).join('')
       ).join('') +
       '<label for="cn-notes" style="margin-top:0.6rem">Notes (optional)</label><input id="cn-notes">' +
-      '<div class="btnrow"><button class="b primary" id="cn-save">Save stock list</button></div>'
+      '<div class="btnrow"><button class="b primary" id="cn-save">' + (existing ? 'Save changes' : 'Save stock list') + '</button></div>'
     );
+    if (d) {
+      const items = d.items || {};
+      CONSUMABLE_GROUPS.forEach(g => g[1].forEach(it => {
+        if (items[it]) {
+          $('cs-' + ckId(it)).value = items[it].stock || '';
+          $('co-' + ckId(it)).value = items[it].order || '';
+        }
+      }));
+      $('cn-notes').value = d.notes || '';
+    }
     $('cn-save').addEventListener('click', async () => {
       const items = {};
       CONSUMABLE_GROUPS.forEach(g => g[1].forEach(it => {
@@ -385,9 +422,10 @@
         if (stock || order) items[it] = { stock: stock, order: order };
       }));
       if (!Object.keys(items).length) { toast('Fill in at least one item'); return; }
-      await saveChecklist('consumables', { items: items, notes: $('cn-notes').value.trim() });
+      await saveChecklist('consumables', { items: items, notes: $('cn-notes').value.trim() }, existing);
     });
-  });
+  }
+  $('ck-consumables').addEventListener('click', () => openConsumablesForm(null));
 
   function openChecklistSheet(k) {
     const d = k.data || {};
@@ -412,8 +450,16 @@
     }
     openSheet(
       '<h3>' + CK_TITLE[k.kind] + '</h3><p class="sub">' + k.log_date + '</p>' + body +
-      (myRole === 'owner' ? '<div class="btnrow" style="margin-top:1rem"><button class="b bad" id="ck-del">Delete</button></div>' : '')
+      '<div class="btnrow" style="margin-top:1rem">' +
+      '<button class="b" id="ck-edit">Edit</button>' +
+      (myRole === 'owner' ? '<button class="b bad" id="ck-del">Delete</button>' : '') +
+      '</div>'
     );
+    $('ck-edit').addEventListener('click', () => {
+      if (k.kind === 'opening') openOpeningForm(k);
+      else if (k.kind === 'drugs') openDrugsForm(k);
+      else openConsumablesForm(k);
+    });
     const del = $('ck-del');
     if (del) {
       del.addEventListener('click', async () => {
@@ -444,9 +490,11 @@
       '</div>' +
       '<div class="btnrow" style="margin-top:1rem">' +
       (!l.check_out ? '<button class="b primary" id="lg-checkout">Check out now (' + nowLondon() + ')</button>' : '') +
+      '<button class="b" id="lg-edit">Edit</button>' +
       (myRole === 'owner' ? '<button class="b bad" id="lg-del">Delete</button>' : '') +
       '</div>'
     );
+    $('lg-edit').addEventListener('click', () => openDailyLogForm(l));
     const co = $('lg-checkout');
     if (co) {
       co.addEventListener('click', async () => {

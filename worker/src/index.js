@@ -470,7 +470,13 @@ app.get('/forms', async c => {
   const user = await formsUser(c);
   const url = new URL(c.req.url);
   url.pathname = user ? '/forms.html' : '/admin/login.html';
-  return c.env.ASSETS.fetch(new Request(url, { headers: c.req.raw.headers }));
+  const res = await c.env.ASSETS.fetch(new Request(url, { headers: c.req.raw.headers }));
+  /* no-store is load-bearing: without it the zone edge cache can freeze the
+     pre-login page (or worse, the logged-in page) and serve it to anyone */
+  return new Response(res.body, {
+    status: res.status,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+  });
 });
 app.get('/forms.html', c => c.redirect('/forms', 301));
 
