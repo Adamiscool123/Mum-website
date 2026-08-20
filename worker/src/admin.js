@@ -87,6 +87,24 @@ export function registerAdmin(app) {
     return c.json({ ok: true });
   });
 
+  /* Edit the typed answers of a signed form. Signatures are never touched;
+     every edit stamps updated_at/updated_by for the audit trail. */
+  app.patch('/admin/api/forms/:id', async c => {
+    let b;
+    try { b = await c.req.json(); } catch { return c.json({ error: 'Bad JSON' }, 400); }
+    if (!b.data || typeof b.data !== 'object') return c.json({ error: 'Missing data' }, 400);
+    const name = String(b.data.full_name || '').trim();
+    if (name.length < 2) return c.json({ error: 'Full name is required' }, 400);
+    const json = JSON.stringify(b.data);
+    if (json.length > 40000) return c.json({ error: 'Form too large' }, 400);
+    const row = await c.env.DB.prepare('SELECT id FROM form_submissions WHERE id = ?').bind(c.req.param('id')).first();
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    await c.env.DB.prepare(
+      `UPDATE form_submissions SET data = ?, client_name = ?, client_email = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`
+    ).bind(json, name, String(b.data.email || '').trim() || null, c.get('adminUser').username, row.id).run();
+    return c.json({ ok: true });
+  });
+
   /* ---------- staff checklists: opening / drug stock / consumables (both roles) ---------- */
   app.get('/admin/api/checklists', async c => {
     const kind = c.req.query('kind') || '';

@@ -168,13 +168,16 @@
     openSheet(
       '<h3>' + esc(f.client_name) + '</h3>' +
       '<p class="muted" style="margin:0.2rem 0 0.8rem">' +
-      (f.kind === 'medical' ? 'Medical Assessment' : 'Treatment Consent') + ' · signed ' + fmtWhen(f.created_at) + '</p>' +
+      (f.kind === 'medical' ? 'Medical Assessment' : 'Treatment Consent') + ' · signed ' + fmtWhen(f.created_at) +
+      (f.updated_at ? ' · edited ' + fmtWhen(f.updated_at) + (f.updated_by ? ' by ' + esc(f.updated_by) : '') : '') + '</p>' +
       formBodyHtml(f) +
       '<div class="btnrow" style="margin-top:1.2rem">' +
       '<button class="b primary" id="form-print">Print</button>' +
+      '<button class="b" id="form-edit">Edit</button>' +
       (myRole === 'owner' ? '<button class="b bad" id="form-del">Delete</button>' : '') +
       '</div>'
     );
+    $('form-edit').addEventListener('click', () => openFormEditSheet(f));
     $('form-print').addEventListener('click', () => printForm(f));
     const del = $('form-del');
     if (del) {
@@ -186,6 +189,37 @@
         toast('Form deleted');
       });
     }
+  }
+
+  function openFormEditSheet(f) {
+    const d = f.data;
+    const sections = f.kind === 'medical' ? MED_SECTIONS : CONSENT_SECTIONS;
+    const boolKeys = Object.keys(HX_LABELS).concat(Object.keys(PREG_LABELS));
+    let html = '<h3>Edit &mdash; ' + esc(f.client_name) + '</h3>' +
+      '<p class="sub">' + (f.kind === 'medical' ? 'Medical Assessment' : 'Treatment Consent') +
+      ' &middot; signatures are kept exactly as signed</p>';
+    sections.forEach(sec => {
+      html += '<div class="ckgroup">' + sec[0] + '</div>' +
+        sec[1].map(p => '<label for="fe-' + p[0] + '">' + p[1] + '</label><input id="fe-' + p[0] + '">').join('');
+      if (f.kind === 'medical' && sec[0] === 'Personal details') {
+        html += '<div class="ckgroup">Medical history</div><div class="fe-checks">' +
+          Object.keys(HX_LABELS).map(k => '<label class="fe-check"><input type="checkbox" id="fe-' + k + '"> ' + HX_LABELS[k] + '</label>').join('') + '</div>' +
+          '<div class="ckgroup">Pregnancy</div><div class="fe-checks">' +
+          Object.keys(PREG_LABELS).map(k => '<label class="fe-check"><input type="checkbox" id="fe-' + k + '"> ' + PREG_LABELS[k] + '</label>').join('') + '</div>';
+      }
+    });
+    html += '<div class="btnrow" style="margin-top:1rem"><button class="b primary" id="fe-save">Save changes</button></div>';
+    openSheet(html);
+    sections.forEach(sec => sec[1].forEach(p => { $('fe-' + p[0]).value = d[p[0]] || ''; }));
+    if (f.kind === 'medical') boolKeys.forEach(k => { $('fe-' + k).checked = d[k] === true; });
+    $('fe-save').addEventListener('click', async () => {
+      const nd = Object.assign({}, d);
+      sections.forEach(sec => sec[1].forEach(p => { nd[p[0]] = $('fe-' + p[0]).value.trim(); }));
+      if (f.kind === 'medical') boolKeys.forEach(k => { nd[k] = $('fe-' + k).checked; });
+      if (!nd.full_name || nd.full_name.length < 2) { toast('Full name is required'); return; }
+      const out = await api('/admin/api/forms/' + f.id, { method: 'PATCH', body: JSON.stringify({ data: nd }) });
+      if (out && out.ok) { closeSheet(); loadForms(); toast('Form updated'); }
+    });
   }
 
   function printForm(f) {
